@@ -7,7 +7,7 @@ import { supabase } from "../lib/supabase";
    AYARLAR — isimleri ve görevleri burada değiştir
    --------------------------------------------------------------- */
 
-const PEOPLE = ["Deniz", "Ahmet", "Zeynep"];
+const PEOPLE = ["Emirhan", "Baran", "Ege"];
 
 const AREAS = [
   { id: "koridor", name: "Koridor", tasks: ["Süpürme", "Paspas", "Ayakkabılık düzeni"] },

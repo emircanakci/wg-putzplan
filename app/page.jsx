@@ -10,16 +10,26 @@ import { supabase } from "../lib/supabase";
 const PEOPLE = ["Emirhan", "Baran", "Ege"];
 
 const AREAS = [
-  { id: "koridor", name: "Koridor", tasks: ["Süpürme", "Paspas", "Ayakkabılık düzeni"] },
-  { id: "banyo", name: "Banyo", tasks: ["Lavabo & ayna", "Duş / küvet", "Klozet", "Yer"] },
-  { id: "mutfak", name: "Mutfak", tasks: ["Tezgah & ocak", "Bulaşık makinesi", "Buzdolabı kontrol", "Yer"] },
+  {
+    id: "koridor",
+    name: "Koridor",
+    tasks: ["Süpürge", "Vileda", "Küvet Temizliği", "Bulaşık makinesi",],
+    mini: { id: "cop", name: "Çöp" }, 
+  },
+  {
+    id: "banyo",
+    name: "Banyo",
+    tasks: ["Lavabo & Ayna", "Klozet", "Süpürge", "Vileda"],
+    mini: { id: "market", name: "Ortak market" },
+  },
+  {
+    id: "mutfak",
+    name: "Mutfak",
+    tasks: ["Tezgah", "Ocak", "Bulaşık makinesi", "Süpürge", "Vileda"],
+    mini: { id: "masa", name: "Mutfak Masası" },
+  },
 ];
 
-const MINI = [
-  { id: "cop", name: "Çöp & Pfand" },
-  { id: "market", name: "Ortak market" },
-  { id: "camasir", name: "Çamaşır alanı" },
-];
 
 // Rotasyonun başladığı pazartesi
 const START = new Date(2026, 8, 14);
@@ -29,11 +39,26 @@ const START = new Date(2026, 8, 14);
 const weekNow = () => Math.floor((Date.now() - START.getTime()) / 604800000);
 
 const rotation = (week) =>
-  PEOPLE.map((person, i) => ({
-    person,
-    area: AREAS[(i + week) % 3],
-    mini: MINI[(i + week * 2) % 3],
-  }));
+  PEOPLE.map((person, i) => {
+    const areaIndex = (((i + week) % 3) + 3) % 3;
+    const area = AREAS[areaIndex];
+
+    // Haftaya göre çöp türünü otomatik belirle (Çift haftalar: Restmüll, Tek haftalar: Gelbe/Pappe)
+    const copText = Math.abs(week) % 2 === 0 
+      ? "Çöp ( Restmüll )" 
+      : "Çöp ( Gelbe / Pappe )";
+
+    // Eğer alan Koridor ise çöp ismini dinamik yap, değilse kendi mini görevini koru
+    const mini = area.id === "koridor"
+      ? { ...area.mini, name: copText }
+      : area.mini;
+
+    return {
+      person,
+      area,
+      mini,
+    };
+  });
 
 const weekLabel = (week) => {
   const monday = new Date(START.getTime() + week * 604800000);
@@ -118,10 +143,16 @@ const toggle = async (person, task) => {
   const mine = plan.find((p) => p.person === me);
   const others = plan.filter((p) => p.person !== me);
   const myProgress = progressOf(mine);
+  
 
   const buildNudge = (entry) => {
     const missing = tasksOf(entry).filter((t) => !done[keyFor(week, entry.person, t)]);
     return `${entry.person}, bu hafta ${entry.area.name} sende. Kalanlar: ${missing.join(", ")}`;
+  };
+
+const openWhatsApp = (entry) => {
+    const text = encodeURIComponent(buildNudge(entry));
+    window.open(`https://wa.me/?text=${text}`, "_blank");
   };
 
   return (
@@ -130,18 +161,18 @@ const toggle = async (person, task) => {
         @import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700&family=Archivo+Expanded:wght@600;700&display=swap');
 
         .pp {
-          --grout: #DCE3E7;
-          --tile: #FFFFFF;
-          --ink: #17222A;
+          --grout: #edede9;
+          --tile: #ffffff;
+          --ink: #173b21;
           --muted: #6B7A85;
           --line: #C9D3D9;
           --blue: #1550E8;
-          --green: #0E9F6E;
+          --green: #0E9F6E; 
           --amber: #C77700;
           background: var(--grout);
           color: var(--ink);
           font-family: 'Archivo', system-ui, sans-serif;
-          min-height: 100%;
+          min-height: 100vh;
           padding: 18px 14px 40px;
           -webkit-font-smoothing: antialiased;
         }
@@ -150,7 +181,7 @@ const toggle = async (person, task) => {
         .bar { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
         .mark {
           font-family: 'Archivo Expanded', 'Archivo', sans-serif;
-          font-weight: 700; font-size: 17px; letter-spacing: -0.01em;
+          font-weight: 700; font-size: 27px; letter-spacing: -0.01em;
         }
         .mark span { color: var(--blue); }
         .weeknav { display: flex; align-items: center; gap: 2px; }
@@ -159,11 +190,12 @@ const toggle = async (person, task) => {
           font-size: 17px; line-height: 1; padding: 6px 8px; cursor: pointer; border-radius: 4px;
         }
         .weeknav button:hover { background: rgba(0,0,0,.05); color: var(--ink); }
+        .weeknav button:disabled {opacity: 0.25;cursor: not-allowed;}
         .weeknav b { font-size: 13px; font-weight: 500; min-width: 86px; text-align: center; color: var(--muted); }
 
         .who { display: flex; gap: 3px; margin-bottom: 18px; background: var(--line); padding: 3px; border-radius: 5px; }
         .who button {
-          flex: 1; border: none; background: transparent; font: inherit; font-size: 13px; font-weight: 500;
+          flex: 1; border: none; background: transparent; font: inherit; font-size: 17px; font-weight: 500;
           color: var(--muted); padding: 8px 4px; border-radius: 3px; cursor: pointer;
         }
         .who button[data-on="1"] { background: var(--tile); color: var(--ink); font-weight: 600; }
@@ -219,6 +251,37 @@ const toggle = async (person, task) => {
           color: var(--amber); padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-top: 10px;
         }
         .poke:hover { background: #FFF8EC; }
+        .msg-box {
+          margin-top: 10px;
+          background: #FFF8EC;
+          border: 1px solid #F0DFBE;
+          border-radius: 4px;
+          padding: 10px 12px;
+        }
+        .msg {
+          font-size: 13px;
+          line-height: 1.5;
+          color: #7A4E00;
+          margin-bottom: 8px;
+        }
+        .wa-btn {
+          border: none;
+          background: #25D366;
+          color: white;
+          font: inherit;
+          font-size: 12px;
+          font-weight: 600;
+          padding: 6px 10px;
+          border-radius: 4px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .wa-btn:hover {
+          background: #20bd5a;
+        }
+        
         .msg {
           margin-top: 10px; font-size: 13px; line-height: 1.5; background: #FFF8EC;
           border: 1px solid #F0DFBE; border-radius: 4px; padding: 10px 12px; color: #7A4E00;
@@ -235,12 +298,23 @@ const toggle = async (person, task) => {
       `}</style>
 
       <div className="bar">
-        <div className="mark">Putz<span>plan</span></div>
-        <div className="weeknav">
-          <button onClick={() => setWeek(week - 1)} aria-label="Önceki hafta">‹</button>
-          <b>{isCurrent ? "Bu hafta" : weekLabel(week)}</b>
-          <button onClick={() => setWeek(week + 1)} aria-label="Sonraki hafta">›</button>
-        </div>
+        <div className="mark">Putz-<span>WG</span></div>
+    <div className="weeknav">
+  <button 
+    onClick={() => setWeek((prev) => Math.max(0, prev - 1))} 
+    disabled={week <= 0} 
+    aria-label="Önceki hafta"
+  >
+    ‹
+  </button>
+  <b>{isCurrent ? "Bu hafta" : weekLabel(week)}</b>
+  <button 
+    onClick={() => setWeek((prev) => prev + 1)} 
+    aria-label="Sonraki hafta"
+  >
+    ›
+  </button>
+</div>
       </div>
 
       <div className="who">
@@ -300,12 +374,21 @@ const toggle = async (person, task) => {
                 <button className="poke" onClick={() => setNudge(nudge === entry.person ? null : entry.person)}>
                   Hatırlat
                 </button>
-                {nudge === entry.person && <div className="msg">{buildNudge(entry)}</div>}
+                {nudge === entry.person && (
+                  <div className="msg-box">
+                    <div className="msg">{buildNudge(entry)}</div>
+                    <button className="wa-btn" onClick={() => openWhatsApp(entry)}>
+                      WhatsApp ile Gönder
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
         );
       })}
+      
+      
 
       <h2 style={{ marginTop: 22 }}>Bu hafta</h2>
       <div className="score">

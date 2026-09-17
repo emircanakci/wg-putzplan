@@ -1,13 +1,14 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { Bell } from 'lucide-react';
 
 /* ---------------------------------------------------------------
    AYARLAR — isimleri ve görevleri burada değiştir
    --------------------------------------------------------------- */
 
 const PEOPLE = ["Emirhan", "Baran", "Ege"];
-
+const NEXT_PUBLIC_VAPID_PUBLIC_KEY = "BJKZav5q_i3ePH20xQv9BKLYejL1eLo-kkCeYgXxAEOBr3kiq1Dfy5iXGmiMEvWumuwhEOI5p4bX5UH5SKe0rC8";
 const LANGS = ["tr", "en", "de"];
 
 const AREAS = [
@@ -73,6 +74,7 @@ const UI = {
     remaining: (list) => `Kalan: ${list}`,
     remind: "Hatırlat",
     sendWhatsapp: "WhatsApp ile Gönder",
+    sendPush: "Push Bildirimi Gönder 🔔",
     weekScore: "Bu hafta",
     mini: "mini",
     prevWeek: "Önceki hafta",
@@ -90,6 +92,7 @@ const UI = {
     remaining: (list) => `Remaining: ${list}`,
     remind: "Remind",
     sendWhatsapp: "Send via WhatsApp",
+    sendPush: "Send Push Notification 🔔",
     weekScore: "This week",
     mini: "mini",
     prevWeek: "Previous week",
@@ -107,6 +110,7 @@ const UI = {
     remaining: (list) => `Verbleibend: ${list}`,
     remind: "Erinnern",
     sendWhatsapp: "Per WhatsApp senden",
+    sendPush: "Push-Benachrichtigung senden 🔔",
     weekScore: "Diese Woche",
     mini: "mini",
     prevWeek: "Vorherige Woche",
@@ -120,6 +124,17 @@ const UI = {
 const START = new Date(2026, 8, 14);
 
 /* --------------------------------------------------------------- */
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 const weekNow = () => Math.floor((Date.now() - START.getTime()) / 604800000);
 
@@ -153,7 +168,6 @@ const timeAgo = (ts, lang) => {
   return t.d(Math.floor(h / 24));
 };
 
-// Bir kişinin bu haftaki görevlerini {id, label, isMini} olarak döner
 const tasksOf = (entry, week, lang) => {
   const areaTasks = entry.area.tasks.map((t) => ({
     id: `${entry.area.id}:${t.id}`,
@@ -174,7 +188,6 @@ export default function Putzplan() {
 
   const t = UI[lang];
 
-  // İlk açılış: daha önce seçilmiş tema/dil var mı bak
   useEffect(() => {
     const savedMe = localStorage.getItem("pp-me");
     if (savedMe && PEOPLE.includes(savedMe)) setMe(savedMe);
@@ -251,6 +264,91 @@ export default function Putzplan() {
   const openWhatsApp = (entry) => {
     const text = encodeURIComponent(buildNudge(entry));
     window.open(`https://wa.me/?text=${text}`, "_blank");
+  };
+
+  const handleRemind = async (targetPerson) => {
+    try {
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .select("subscription")
+        .eq("person", targetPerson)
+        .maybeSingle();
+
+      if (error || !data) {
+        alert(`${targetPerson} henüz bildirim izni vermemiş veya cihazı kayıtlı değil.`);
+        return;
+      }
+
+      const response = await fetch(
+        "https://lglbprmhlwqejwfgpafs.supabase.co/functions/v1/send-push",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            subscription: data.subscription,
+            title: "Putz-WG Temizlik Hatırlatması 🧹",
+            message: `Selam ${targetPerson}, bu haftaki temizlik sıran geldi!`,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok) {
+        alert(`${targetPerson} kişisine bildirim gönderildi!`);
+      } else {
+        alert("Hata: " + result.error);
+      }
+    } catch (err) {
+      console.error("Hatırlatma hatası:", err);
+    }
+  };
+
+const subscribeToNotifications = async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      alert("Bu tarayıcı web bildirimlerini desteklemiyor.");
+      return;
+    }
+
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        alert("Bildirim izni verilmedi.");
+        return;
+      }
+
+      await navigator.serviceWorker.register("/sw.js");
+      const registration = await navigator.serviceWorker.ready;
+
+      // *** YENİ: Eski abonelik varsa (farklı bir key ile oluşturulmuş olabilir) önce iptal et ***
+      const existingSub = await registration.pushManager.getSubscription();
+      if (existingSub) {
+        await existingSub.unsubscribe();
+      }
+
+      const sub = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(NEXT_PUBLIC_VAPID_PUBLIC_KEY),
+      });
+
+      const { error } = await supabase.from("subscriptions").upsert(
+        { person: me, subscription: sub.toJSON() },
+        { onConflict: "person" }
+      );
+
+      if (error) {
+        alert("Kaydetme hatası: " + error.message);
+        return;
+      }
+
+      alert(`Bildirimler ${me} için aktif edildi!`);
+    } catch (err) {
+      console.error("Abonelik hatası:", err);
+      alert("Bildirim ayarlanırken hata oluştu: " + err.message);
+    }
   };
 
   return (
@@ -341,22 +439,22 @@ export default function Putzplan() {
           font-family: 'Archivo Expanded', 'Archivo', sans-serif; font-weight: 700;
           font-size: 34px; letter-spacing: -0.02em; line-height: 1; margin-bottom: 16px;
         }
-       .fill-track {
-  height: 6px;
-  background: var(--line);
-  border-radius: 99px;
-  margin: 0 -18px;
-  overflow: hidden;
-}
-.fill-bar {
-  height: 100%;
-  background: var(--blue);
-  border-radius: 99px;
-  transition: width 0.3s ease;
-}
-.fill-bar[data-all="1"] {
-  background: var(--green);
-}
+        .fill-track {
+          height: 6px;
+          background: var(--line);
+          border-radius: 99px;
+          margin: 0 -18px;
+          overflow: hidden;
+        }
+        .fill-bar {
+          height: 100%;
+          background: var(--blue);
+          border-radius: 99px;
+          transition: width 0.3s ease;
+        }
+        .fill-bar[data-all="1"] {
+          background: var(--green);
+        }
 
         .list { background: var(--tile); border: 1px solid var(--line); border-top: none; border-radius: 0 0 5px 5px; margin-bottom: 22px; }
         .row {
@@ -364,12 +462,12 @@ export default function Putzplan() {
           padding: 13px 18px; border: none; background: none; font: inherit; text-align: left;
           border-top: 1px solid var(--line); cursor: pointer; color: var(--ink);
         }
-          .row:disabled { cursor: default; opacity: 0.6; }
-.row:disabled:hover { background: none; }
-.view-only-banner {
-  font-size: 12px; color: var(--amber); background: var(--poke-hover);
-  border: 1px solid var(--line); border-radius: 5px; padding: 8px 12px; margin-bottom: 8px;
-}
+        .row:disabled { cursor: default; opacity: 0.6; }
+        .row:disabled:hover { background: none; }
+        .view-only-banner {
+          font-size: 12px; color: var(--amber); background: var(--poke-hover);
+          border: 1px solid var(--line); border-radius: 5px; padding: 8px 12px; margin-bottom: 8px;
+        }
         .row:hover { background: var(--row-hover); }
         .box {
           width: 21px; height: 21px; flex: none; border: 1.5px solid var(--line); border-radius: 3px;
@@ -403,11 +501,17 @@ export default function Putzplan() {
         .poke:hover { background: var(--poke-hover); }
         .msg-box { margin-top: 10px; background: var(--poke-hover); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; }
         .msg { font-size: 13px; line-height: 1.5; color: var(--amber); margin-bottom: 8px; }
+        .actions-group { display: flex; gap: 8px; flex-wrap: wrap; }
         .wa-btn {
           border: none; background: #25D366; color: white; font: inherit; font-size: 12px; font-weight: 600;
           padding: 6px 10px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
         }
         .wa-btn:hover { background: #20bd5a; }
+        .push-btn {
+          border: 1px solid var(--line); background: var(--tile); color: var(--ink); font: inherit; font-size: 12px; font-weight: 600;
+          padding: 6px 10px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+        }
+        .push-btn:hover { background: var(--row-hover); }
 
         .empty { font-size: 13px; color: var(--muted); padding: 4px 0 2px; }
 
@@ -423,6 +527,13 @@ export default function Putzplan() {
       <div className="bar">
         <div className="mark">Putz-<span>WG</span></div>
         <div className="bar-right">
+          <button 
+            onClick={subscribeToNotifications}
+            className="theme-toggle"
+            title="Bildirimleri Aç"
+          >
+            <Bell className="w-4 h-4 text-amber-500" />
+          </button>
           <div className="lang-switch">
             {LANGS.map((l) => (
               <button
@@ -473,46 +584,43 @@ export default function Putzplan() {
 
       <div className="hero">
         {!isCurrent && (
-  <div className="view-only-banner">{t.viewOnly}</div>
-)}
+          <div className="view-only-banner">{t.viewOnly}</div>
+        )}
         <div className="kicker">{isCurrent ? t.yourWeek : t.weekOf(weekLabel(week))}</div>
         <div className="area">{mine.area.name[lang]}</div>
-        {/* Yüzde Mantığı ile Dolan İlerleme Çubuğu */}
-<div className="fill-track">
-  <div 
-    className="fill-bar" 
-    style={{ width: `${(myProgress.done / myProgress.total) * 100}%` }}
-    data-all={myProgress.done === myProgress.total ? 1 : 0}
-  />
-</div>
+        <div className="fill-track">
+          <div 
+            className="fill-bar" 
+            style={{ width: `${(myProgress.done / myProgress.total) * 100}%` }}
+            data-all={myProgress.done === myProgress.total ? 1 : 0}
+          />
+        </div>
       </div>
 
- <div className="list">
-  {myTasks.map((task) => {
-    const rec = done[keyFor(week, me, task.id)];
-    return (
-      <button
-        key={task.id}
-        className="row"
-        data-done={rec ? 1 : 0}
-        disabled={!isCurrent}
-        onClick={() => isCurrent && toggle(me, task.id)}
-      >
-        {/* KUTU VE TİK İŞARETİ EKLENDİ */}
-        <span className="box">{rec ? "✓" : ""}</span>
-
-        <span className="label">{task.isMini ? task.label : task.label.split(": ")[1]}</span>
-        {task.isMini && !rec && <span className="tag">{t.mini}</span>}
-        {rec && (
-          <span className="stamp">
-            <b>{rec.by}</b>
-            {timeAgo(rec.at, lang)}
-          </span>
-        )}
-      </button>
-    );
-  })}
-</div>
+      <div className="list">
+        {myTasks.map((task) => {
+          const rec = done[keyFor(week, me, task.id)];
+          return (
+            <button
+              key={task.id}
+              className="row"
+              data-done={rec ? 1 : 0}
+              disabled={!isCurrent}
+              onClick={() => isCurrent && toggle(me, task.id)}
+            >
+              <span className="box">{rec ? "✓" : ""}</span>
+              <span className="label">{task.isMini ? task.label : task.label.split(": ")[1]}</span>
+              {task.isMini && !rec && <span className="tag">{t.mini}</span>}
+              {rec && (
+                <span className="stamp">
+                  <b>{rec.by}</b>
+                  {timeAgo(rec.at, lang)}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
       <h2>{t.homeStatus}</h2>
       {others.map((entry) => {
@@ -533,17 +641,22 @@ export default function Putzplan() {
               <>
                 <div className="empty">{t.remaining(missing.join(", "))}</div>
 
-               {isCurrent && (
-  <button className="poke" onClick={() => setNudge(nudge === entry.person ? null : entry.person)}>
-    {t.remind}
-  </button>
-)}
+                {isCurrent && (
+                  <button className="poke" onClick={() => setNudge(nudge === entry.person ? null : entry.person)}>
+                    {t.remind}
+                  </button>
+                )}
                 {nudge === entry.person && (
                   <div className="msg-box">
                     <div className="msg">{buildNudge(entry)}</div>
-                    <button className="wa-btn" onClick={() => openWhatsApp(entry)}>
-                      {t.sendWhatsapp}
-                    </button>
+                    <div className="actions-group">
+                      <button className="wa-btn" onClick={() => openWhatsApp(entry)}>
+                        {t.sendWhatsapp}
+                      </button>
+                      <button className="push-btn" onClick={() => handleRemind(entry.person)}>
+                        {t.sendPush}
+                      </button>
+                    </div>
                   </div>
                 )}
               </>

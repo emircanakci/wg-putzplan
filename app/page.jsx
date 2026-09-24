@@ -1,7 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { Bell } from 'lucide-react';
 
 /* ---------------------------------------------------------------
    AYARLAR — isimleri ve görevleri burada değiştir
@@ -127,10 +126,7 @@ const UI = {
   },
 };
 
-// Rotasyonun başladığı pazartesi
 const START = new Date(2026, 8, 14);
-
-/* --------------------------------------------------------------- */
 
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -221,7 +217,6 @@ export default function Putzplan() {
         return total > 0 && doneCount === total;
       };
 
-      // Bonus: o haftayı tam bitiren herkese +2
       Object.keys(byPersonWeek).forEach((k) => {
         const [person, weekStr] = k.split("|");
         if (weekAllDone(person, Number(weekStr))) {
@@ -229,7 +224,6 @@ export default function Putzplan() {
         }
       });
 
-      // Combo hesaplama
       PEOPLE.forEach((person) => {
         let streak = 0;
         let wk = weekNow();
@@ -612,7 +606,10 @@ export default function Putzplan() {
             className="theme-toggle"
             title="Bildirimleri Aç"
           >
-            <Bell className="w-4 h-4 text-amber-500" />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--amber)' }}>
+              <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+              <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+            </svg>
           </button>
           <div className="lang-switch">
             {LANGS.map((l) => (

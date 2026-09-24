@@ -20,6 +20,7 @@ const AREAS = [
       { id: "vileda", label: { tr: "Vileda", en: "Mopping", de: "Wischen" } },
       { id: "kuvet", label: { tr: "Küvet Temizliği", en: "Tub Cleaning", de: "Wannenreinigung" } },
       { id: "bulasikmakinesi", label: { tr: "Bulaşık makinesi", en: "Dishwasher", de: "Geschirrspüler" } },
+      { id: "cop_cikar", label: { tr: "Çöpü çıkartma", en: "Take out the trash", de: "Müll rausbringen" } },
     ],
     miniId: "cop",
   },
@@ -27,10 +28,12 @@ const AREAS = [
     id: "banyo",
     name: { tr: "Banyo", en: "Bathroom", de: "Badezimmer" },
     tasks: [
-      { id: "lavabo", label: { tr: "Lavabo & Ayna", en: "Sink & Mirror", de: "Waschbecken & Spiegel" } },
+      { id: "lavabo", label: { tr: "Lavabo", en: "Sink", de: "Waschbecken" } },
+      { id: "ayna", label: { tr: "Ayna", en: "Mirror", de: "Spiegel" } },
       { id: "klozet", label: { tr: "Klozet", en: "Toilet", de: "Toilette" } },
       { id: "supurge", label: { tr: "Süpürge", en: "Vacuum", de: "Staubsaugen" } },
       { id: "vileda", label: { tr: "Vileda", en: "Mopping", de: "Wischen" } },
+      { id: "bulasikmakinesi", label: { tr: "Bulaşık makinesi", en: "Dishwasher", de: "Geschirrspüler" } },
     ],
     miniId: "market",
   },
@@ -43,6 +46,7 @@ const AREAS = [
       { id: "bulasikmakinesi", label: { tr: "Bulaşık makinesi", en: "Dishwasher", de: "Geschirrspüler" } },
       { id: "supurge", label: { tr: "Süpürge", en: "Vacuum", de: "Staubsaugen" } },
       { id: "vileda", label: { tr: "Vileda", en: "Mopping", de: "Wischen" } },
+      { id: "cop_cikar", label: { tr: "Çöpü çıkartma", en: "Take out the trash", de: "Müll rausbringen" } },
     ],
     miniId: "masa",
   },
@@ -65,6 +69,7 @@ const trashLabel = (week, lang) => {
 
 const UI = {
   tr: {
+    leaderboard: "Toplam Puan",
     viewOnly: "Bu hafta sadece görüntüleniyor, değişiklik yapılamaz.",
     thisWeek: "Bu hafta",
     yourWeek: "Bu hafta sende",
@@ -83,6 +88,7 @@ const UI = {
     nudge: (person, area, list) => `${person}, bu hafta ${area} sende. Kalanlar: ${list}`,
   },
   en: {
+    leaderboard: "Total Points",
     viewOnly: "This week is view-only — no changes allowed.",
     thisWeek: "This week",
     yourWeek: "Your week",
@@ -101,6 +107,7 @@ const UI = {
     nudge: (person, area, list) => `${person}, ${area} is yours this week. Remaining: ${list}`,
   },
   de: {
+    leaderboard: "Gesamtpunkte",
     viewOnly: "Diese Woche ist nur zur Ansicht — keine Änderungen möglich.",
     thisWeek: "Diese Woche",
     yourWeek: "Diese Woche bist du dran",
@@ -169,6 +176,7 @@ const timeAgo = (ts, lang) => {
 };
 
 const tasksOf = (entry, week, lang) => {
+  if (!entry || !entry.area) return [];
   const areaTasks = entry.area.tasks.map((t) => ({
     id: `${entry.area.id}:${t.id}`,
     label: `${entry.area.name[lang]}: ${t.label[lang]}`,
@@ -185,6 +193,70 @@ export default function Putzplan() {
   const [nudge, setNudge] = useState(null);
   const [theme, setTheme] = useState("light");
   const [lang, setLang] = useState("tr");
+  const [totals, setTotals] = useState({});
+  const [combos, setCombos] = useState({});
+
+  useEffect(() => {
+    const loadTotals = async () => {
+      const { data } = await supabase.from("completions").select("person, week");
+      const counts = {};
+      const streaks = {};
+      PEOPLE.forEach((p) => {
+        counts[p] = 0;
+        streaks[p] = 0;
+      });
+
+      const byPersonWeek = {};
+      (data || []).forEach((r) => {
+        counts[r.person] = (counts[r.person] || 0) + 1;
+        const k = `${r.person}|${r.week}`;
+        byPersonWeek[k] = (byPersonWeek[k] || 0) + 1;
+      });
+
+      const weekAllDone = (person, wk) => {
+        const entry = rotation(wk).find((e) => e.person === person);
+        if (!entry) return false;
+        const total = tasksOf(entry, wk, "tr").length;
+        const doneCount = byPersonWeek[`${person}|${wk}`] || 0;
+        return total > 0 && doneCount === total;
+      };
+
+      // Bonus: o haftayı tam bitiren herkese +2
+      Object.keys(byPersonWeek).forEach((k) => {
+        const [person, weekStr] = k.split("|");
+        if (weekAllDone(person, Number(weekStr))) {
+          counts[person] += 2;
+        }
+      });
+
+      // Combo hesaplama
+      PEOPLE.forEach((person) => {
+        let streak = 0;
+        let wk = weekNow();
+
+        if (!weekAllDone(person, wk)) {
+          wk--;
+        }
+
+        while (wk >= 0 && weekAllDone(person, wk)) {
+          streak++;
+          wk--;
+        }
+        streaks[person] = streak;
+      });
+
+      setTotals(counts);
+      setCombos(streaks);
+    };
+    loadTotals();
+
+    const channel = supabase
+      .channel("totals-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "completions" }, loadTotals)
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, []);
 
   const t = UI[lang];
 
@@ -246,11 +318,12 @@ export default function Putzplan() {
   };
 
   const progressOf = (entry) => {
+    if (!entry) return { done: 0, total: 0 };
     const all = tasksOf(entry, week, lang);
     return { done: all.filter((x) => done[keyFor(week, entry.person, x.id)]).length, total: all.length };
   };
 
-  const mine = plan.find((p) => p.person === me);
+  const mine = plan.find((p) => p.person === me) || plan[0];
   const others = plan.filter((p) => p.person !== me);
   const myTasks = tasksOf(mine, week, lang);
   const myProgress = progressOf(mine);
@@ -266,7 +339,8 @@ export default function Putzplan() {
     window.open(`https://wa.me/?text=${text}`, "_blank");
   };
 
-  const handleRemind = async (targetPerson) => {
+  const handleRemind = async (entry) => {
+    const targetPerson = entry.person;
     try {
       const { data, error } = await supabase
         .from("subscriptions")
@@ -290,13 +364,12 @@ export default function Putzplan() {
           body: JSON.stringify({
             subscription: data.subscription,
             title: "Putz-WG Temizlik Hatırlatması 🧹",
-            message: `Selam ${targetPerson}, bu haftaki temizlik sıran geldi!`,
+            message: buildNudge(entry),
           }),
         }
       );
 
       const result = await response.json();
-
       if (response.ok) {
         alert(`${targetPerson} kişisine bildirim gönderildi!`);
       } else {
@@ -307,7 +380,7 @@ export default function Putzplan() {
     }
   };
 
-const subscribeToNotifications = async () => {
+  const subscribeToNotifications = async () => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
       alert("Bu tarayıcı web bildirimlerini desteklemiyor.");
       return;
@@ -323,7 +396,6 @@ const subscribeToNotifications = async () => {
       await navigator.serviceWorker.register("/sw.js");
       const registration = await navigator.serviceWorker.ready;
 
-      // *** YENİ: Eski abonelik varsa (farklı bir key ile oluşturulmuş olabilir) önce iptal et ***
       const existingSub = await registration.pushManager.getSubscription();
       if (existingSub) {
         await existingSub.unsubscribe();
@@ -423,6 +495,14 @@ const subscribeToNotifications = async () => {
         .weeknav button:disabled { opacity: 0.25; cursor: not-allowed; }
         .weeknav b { font-size: 13px; font-weight: 500; min-width: 86px; text-align: center; color: var(--muted); }
 
+        .leaderboard { background: var(--tile); border: 1px solid var(--line); border-radius: 5px; padding: 14px 16px; margin-bottom: 14px; }
+        .leaderboard h2 { margin-bottom: 8px; }
+        .leaderboard-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+        .rank { width: 24px; text-align: center; font-weight: 700; }
+        .lb-name { flex: 1; font-weight: 600; font-size: 14px; }
+        .lb-score { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--blue); }
+        .combo { font-size: 12px; font-weight: 700; color: var(--amber); }
+        
         .who { display: flex; gap: 3px; margin-bottom: 18px; background: var(--line); padding: 3px; border-radius: 5px; }
         .who button {
           flex: 1; border: none; background: transparent; font: inherit; font-size: 17px; font-weight: 500;
@@ -567,6 +647,22 @@ const subscribeToNotifications = async () => {
         </div>
       </div>
 
+      <div className="leaderboard">
+        <h2>🏆 {t.leaderboard}</h2>
+        <div className="leaderboard-list">
+          {Object.entries(totals)
+            .sort((a, b) => b[1] - a[1])
+            .map(([person, count], i) => (
+              <div className="leaderboard-row" key={person}>
+                <span className="rank">{["🥇", "🥈", "🥉"][i] || `${i + 1}.`}</span>
+                <span className="lb-name">{person}</span>
+                {combos[person] > 0 && <span className="combo">🔥{combos[person]}</span>}
+                <span className="lb-score">{count}</span>
+              </div>
+            ))}
+        </div>
+      </div>
+
       <div className="who">
         {PEOPLE.map((p) => (
           <button
@@ -587,12 +683,12 @@ const subscribeToNotifications = async () => {
           <div className="view-only-banner">{t.viewOnly}</div>
         )}
         <div className="kicker">{isCurrent ? t.yourWeek : t.weekOf(weekLabel(week))}</div>
-        <div className="area">{mine.area.name[lang]}</div>
+        <div className="area">{mine?.area?.name[lang]}</div>
         <div className="fill-track">
           <div 
             className="fill-bar" 
-            style={{ width: `${(myProgress.done / myProgress.total) * 100}%` }}
-            data-all={myProgress.done === myProgress.total ? 1 : 0}
+            style={{ width: `${myProgress.total > 0 ? (myProgress.done / myProgress.total) * 100 : 0}%` }}
+            data-all={myProgress.done === myProgress.total && myProgress.total > 0 ? 1 : 0}
           />
         </div>
       </div>
@@ -625,7 +721,7 @@ const subscribeToNotifications = async () => {
       <h2>{t.homeStatus}</h2>
       {others.map((entry) => {
         const p = progressOf(entry);
-        const complete = p.done === p.total;
+        const complete = p.done === p.total && p.total > 0;
         const all = tasksOf(entry, week, lang);
         const missing = all.filter((x) => !done[keyFor(week, entry.person, x.id)]).map((x) => x.label.replace(/^.*: /, ""));
         return (
@@ -653,7 +749,7 @@ const subscribeToNotifications = async () => {
                       <button className="wa-btn" onClick={() => openWhatsApp(entry)}>
                         {t.sendWhatsapp}
                       </button>
-                      <button className="push-btn" onClick={() => handleRemind(entry.person)}>
+                      <button className="push-btn" onClick={() => handleRemind(entry)}>
                         {t.sendPush}
                       </button>
                     </div>

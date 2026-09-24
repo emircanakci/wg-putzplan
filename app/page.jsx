@@ -7,8 +7,14 @@ import { supabase } from "../lib/supabase";
    --------------------------------------------------------------- */
 
 const PEOPLE = ["Emirhan", "Baran", "Ege"];
-const NEXT_PUBLIC_VAPID_PUBLIC_KEY = "BJKZav5q_i3ePH20xQv9BKLYejL1eLo-kkCeYgXxAEOBr3kiq1Dfy5iXGmiMEvWumuwhEOI5p4bX5UH5SKe0rC8";
+const VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "BJKZav5q_i3ePH20xQv9BKLYejL1eLo-kkCeYgXxAEOBr3kiq1Dfy5iXGmiMEvWumuwhEOI5p4bX5UH5SKe0rC8";
 const LANGS = ["tr", "en", "de"];
+
+const RANK_ICONS = {
+  0: "https://cdn-icons-png.flaticon.com/512/2583/2583344.png", // 1. Altın
+  1: "https://cdn-icons-png.flaticon.com/512/2583/2583319.png", // 2. Gümüş
+  2: "https://cdn-icons-png.flaticon.com/512/2583/2583434.png", // 3. Bronz
+};
 
 const AREAS = [
   {
@@ -163,7 +169,7 @@ const timeAgo = (ts, lang) => {
     en: { now: "just now", m: (n) => `${n}m ago`, h: (n) => `${n}h ago`, d: (n) => `${n}d ago` },
     de: { now: "gerade eben", m: (n) => `vor ${n} Min.`, h: (n) => `vor ${n} Std.`, d: (n) => `vor ${n} Tg.` },
   };
-  const t = texts[lang];
+  const t = texts[lang] || texts.tr;
   if (m < 1) return t.now;
   if (m < 60) return t.m(m);
   const h = Math.floor(m / 60);
@@ -176,10 +182,11 @@ const tasksOf = (entry, week, lang) => {
   const areaTasks = entry.area.tasks.map((t) => ({
     id: `${entry.area.id}:${t.id}`,
     label: `${entry.area.name[lang]}: ${t.label[lang]}`,
+    rawLabel: t.label[lang],
     isMini: false,
   }));
   const miniLabel = entry.area.miniId === "cop" ? trashLabel(week, lang) : MINI[entry.area.miniId][lang];
-  return [...areaTasks, { id: `${entry.area.id}:${entry.area.miniId}`, label: miniLabel, isMini: true }];
+  return [...areaTasks, { id: `${entry.area.id}:${entry.area.miniId}`, label: miniLabel, rawLabel: miniLabel, isMini: true }];
 };
 
 export default function Putzplan() {
@@ -194,7 +201,12 @@ export default function Putzplan() {
 
   useEffect(() => {
     const loadTotals = async () => {
-      const { data } = await supabase.from("completions").select("person, week");
+      const { data, error } = await supabase.from("completions").select("person, week");
+      if (error) {
+        console.error("Veri çekme hatası:", error);
+        return;
+      }
+
       const counts = {};
       const streaks = {};
       PEOPLE.forEach((p) => {
@@ -220,7 +232,7 @@ export default function Putzplan() {
       Object.keys(byPersonWeek).forEach((k) => {
         const [person, weekStr] = k.split("|");
         if (weekAllDone(person, Number(weekStr))) {
-          counts[person] += 2;
+          counts[person] += 2; // Bonus puan
         }
       });
 
@@ -242,6 +254,7 @@ export default function Putzplan() {
       setTotals(counts);
       setCombos(streaks);
     };
+
     loadTotals();
 
     const channel = supabase
@@ -249,10 +262,12 @@ export default function Putzplan() {
       .on("postgres_changes", { event: "*", schema: "public", table: "completions" }, loadTotals)
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  const t = UI[lang];
+  const t = UI[lang] || UI.tr;
 
   useEffect(() => {
     const savedMe = localStorage.getItem("pp-me");
@@ -271,7 +286,11 @@ export default function Putzplan() {
 
   useEffect(() => {
     const load = async () => {
-      const { data } = await supabase.from("completions").select("*").eq("week", week);
+      const { data, error } = await supabase.from("completions").select("*").eq("week", week);
+      if (error) {
+        console.error("Haftalık görev yükleme hatası:", error);
+        return;
+      }
       const map = {};
       (data || []).forEach((r) => {
         map[`${r.week}|${r.person}|${r.task}`] = { by: r.checked_by, at: new Date(r.created_at).getTime() };
@@ -281,11 +300,13 @@ export default function Putzplan() {
     load();
 
     const channel = supabase
-      .channel("completions-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "completions" }, load)
+      .channel(`completions-changes-${week}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "completions", filter: `week=eq.${week}` }, load)
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [week]);
 
   const plan = useMemo(() => rotation(week), [week]);
@@ -324,7 +345,9 @@ export default function Putzplan() {
 
   const buildNudge = (entry) => {
     const all = tasksOf(entry, week, lang);
-    const missing = all.filter((x) => !done[keyFor(week, entry.person, x.id)]).map((x) => x.label.replace(/^.*: /, ""));
+    const missing = all
+      .filter((x) => !done[keyFor(week, entry.person, x.id)])
+      .map((x) => x.rawLabel);
     return t.nudge(entry.person, entry.area.name[lang], missing.join(", "));
   };
 
@@ -353,7 +376,7 @@ export default function Putzplan() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
+            "Authorization": `Bearer ${supabase.supabaseKey || ""}`,
           },
           body: JSON.stringify({
             subscription: data.subscription,
@@ -367,7 +390,7 @@ export default function Putzplan() {
       if (response.ok) {
         alert(`${targetPerson} kişisine bildirim gönderildi!`);
       } else {
-        alert("Hata: " + result.error);
+        alert("Hata: " + (result.error || "Bildirim gönderilemedi."));
       }
     } catch (err) {
       console.error("Hatırlatma hatası:", err);
@@ -397,7 +420,7 @@ export default function Putzplan() {
 
       const sub = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(NEXT_PUBLIC_VAPID_PUBLIC_KEY),
+        applicationServerKey: urlBase64ToUint8Array(VAPID_KEY),
       });
 
       const { error } = await supabase.from("subscriptions").upsert(
@@ -645,13 +668,31 @@ export default function Putzplan() {
       </div>
 
       <div className="leaderboard">
-        <h2>🏆 {t.leaderboard}</h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <img 
+            src="https://cdn-icons-png.flaticon.com/512/3593/3593584.png" 
+            alt="Leaderboard Logo" 
+            style={{ width: '28px', height: '28px', objectFit: 'contain' }} 
+          />
+          {t.leaderboard}
+        </h2>
+
         <div className="leaderboard-list">
           {Object.entries(totals)
             .sort((a, b) => b[1] - a[1])
             .map(([person, count], i) => (
               <div className="leaderboard-row" key={person}>
-                <span className="rank">{["🥇", "🥈", "🥉"][i] || `${i + 1}.`}</span>
+                <span className="rank" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px' }}>
+                  {RANK_ICONS[i] ? (
+                    <img 
+                      src={RANK_ICONS[i]} 
+                      alt={`${i + 1}. rank`} 
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
+                    />
+                  ) : (
+                    `${i + 1}.`
+                  )}
+                </span>
                 <span className="lb-name">{person}</span>
                 {combos[person] > 0 && <span className="combo">🔥{combos[person]}</span>}
                 <span className="lb-score">{count}</span>
@@ -702,7 +743,7 @@ export default function Putzplan() {
               onClick={() => isCurrent && toggle(me, task.id)}
             >
               <span className="box">{rec ? "✓" : ""}</span>
-              <span className="label">{task.isMini ? task.label : task.label.split(": ")[1]}</span>
+              <span className="label">{task.isMini ? task.label : task.rawLabel}</span>
               {task.isMini && !rec && <span className="tag">{t.mini}</span>}
               {rec && (
                 <span className="stamp">
@@ -720,7 +761,7 @@ export default function Putzplan() {
         const p = progressOf(entry);
         const complete = p.done === p.total && p.total > 0;
         const all = tasksOf(entry, week, lang);
-        const missing = all.filter((x) => !done[keyFor(week, entry.person, x.id)]).map((x) => x.label.replace(/^.*: /, ""));
+        const missing = all.filter((x) => !done[keyFor(week, entry.person, x.id)]).map((x) => x.rawLabel);
         return (
           <div className="card" key={entry.person}>
             <header>

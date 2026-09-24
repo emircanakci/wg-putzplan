@@ -668,14 +668,14 @@ export default function Putzplan() {
       </div>
 
       <div className="leaderboard">
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img 
-            src="https://cdn-icons-png.flaticon.com/512/3593/3593584.png" 
-            alt="Leaderboard Logo" 
-            style={{ width: '28px', height: '28px', objectFit: 'contain' }} 
-          />
-          {t.leaderboard}
-        </h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '13px', fontSize: '1.1rem', marginBottom: '18px' }}>
+    <img 
+      src="https://cdn-icons-png.flaticon.com/512/3593/3593584.png" 
+      alt="Leaderboard Logo" 
+      style={{ width: '26px', height: '26px', objectFit: 'contain' }} 
+    />
+    {t.totalPoints || t.leaderboard}
+  </h2>
 
         <div className="leaderboard-list">
           {Object.entries(totals)

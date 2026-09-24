@@ -145,4 +145,4 @@ Deno.serve(async (req: Request) => {
       status: 400,
     })
   }
-})supabase functions deploy daily-reminder --no-verify-jwt —
+})

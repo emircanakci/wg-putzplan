@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🧹 Putz-WG (Gamified Shared Flat Cleaning Tracker)
 
-## Getting Started
+A modern, full-stack web application built to organize weekly cleaning duties, track housemate progress, and gamify household chores in a shared flat (WG).
 
-First, run the development server:
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=nextdotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=flat&logo=supabase&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white)
+![i18n](https://img.shields.io/badge/i18n-Multilingual-blue?style=flat)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## ✨ Key Features
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+* **Gamified Leaderboard:** Points and ranking system to track completed tasks and encourage friendly competition among housemates.
+* **Weekly Task Assignment:** Detailed duty breakdown for different flat areas (Bathroom, Kitchen, Hallway, etc.) assigned per person.
+* **Multilingual Support (i18n):** Full internationalization support with **Turkish (TR)**, **English (EN)**, and **German (DE)** language options.
+* **Real-time Task Updates:** Instant status synchronization and history tracking powered by Supabase.
+* **House Status & Nudges:** Overview of remaining duties across the apartment with "Remind" functionality.
+* **Push Notifications:** Web push notification integration for chore reminders.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## 🛠️ Tech Stack
 
-To learn more about Next.js, take a look at the following resources:
+* **Framework:** Next.js (App Router)
+* **Language:** TypeScript
+* **Database & Backend:** Supabase (PostgreSQL / Realtime)
+* **Styling:** Tailwind CSS
+* **Internationalization:** i18n (TR/EN/DE)
+* **Deployment:** Vercel
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 📸 Preview
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+![App Preview](preview.png)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---

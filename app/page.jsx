@@ -1,9 +1,9 @@
 "use client";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 
 /* ---------------------------------------------------------------
-   AYARLAR — isimleri ve görevleri burada değiştir
+   Settings - Names and Tasks
    --------------------------------------------------------------- */
 
 const PEOPLE = ["Emirhan", "Baran", "Ege"];
@@ -11,9 +11,9 @@ const VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "BJKZav5q_i3ePH20x
 const LANGS = ["tr", "en", "de"];
 
 const RANK_ICONS = {
-  0: "https://cdn-icons-png.flaticon.com/512/2583/2583344.png", // 1. Altın
-  1: "https://cdn-icons-png.flaticon.com/512/2583/2583319.png", // 2. Gümüş
-  2: "https://cdn-icons-png.flaticon.com/512/2583/2583434.png", // 3. Bronz
+  0: "https://cdn-icons-png.flaticon.com/512/2583/2583344.png",
+  1: "https://cdn-icons-png.flaticon.com/512/2583/2583319.png",
+  2: "https://cdn-icons-png.flaticon.com/512/2583/2583434.png",
 };
 
 const AREAS = [
@@ -69,7 +69,7 @@ const trashLabel = (week, lang) => {
     en: even ? "Trash (General waste)" : "Trash (Recycling/Paper)",
     de: even ? "Müll (Restmüll)" : "Müll (Gelbe Tonne/Pappe)",
   };
-  return map[lang];
+  return map[lang] || map.tr;
 };
 
 const UI = {
@@ -114,7 +114,7 @@ const UI = {
   de: {
     leaderboard: "Gesamtpunkte",
     viewOnly: "Diese Woche ist nur zur Ansicht — keine Änderungen möglich.",
-    thisWeek: "Diese Woche",
+    thisWeek: "Diese Woche bist du dran",
     yourWeek: "Diese Woche bist du dran",
     weekOf: (label) => `Woche vom ${label}`,
     homeStatus: "Haushaltsstatus",
@@ -145,7 +145,7 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-const weekNow = () => Math.floor((Date.now() - START.getTime()) / 604800000);
+const weekNow = () => Math.floor((Date.now() - START.getTime()) / (7 * 24 * 60 * 60 * 1000));
 
 const rotation = (week) =>
   PEOPLE.map((person, i) => {
@@ -154,8 +154,8 @@ const rotation = (week) =>
   });
 
 const weekLabel = (week) => {
-  const monday = new Date(START.getTime() + week * 604800000);
-  const sunday = new Date(monday.getTime() + 6 * 86400000);
+  const monday = new Date(START.getTime() + week * 7 * 24 * 60 * 60 * 1000);
+  const sunday = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000);
   const f = (d) => `${d.getDate()}.${d.getMonth() + 1}`;
   return `${f(monday)} – ${f(sunday)}`;
 };
@@ -181,8 +181,8 @@ const tasksOf = (entry, week, lang) => {
   if (!entry || !entry.area) return [];
   const areaTasks = entry.area.tasks.map((t) => ({
     id: `${entry.area.id}:${t.id}`,
-    label: `${entry.area.name[lang]}: ${t.label[lang]}`,
-    rawLabel: t.label[lang],
+    label: `${entry.area.name[lang] || entry.area.name.tr}: ${t.label[lang] || t.label.tr}`,
+    rawLabel: t.label[lang] || t.label.tr,
     isMini: false,
   }));
   const miniLabel = entry.area.miniId === "cop" ? trashLabel(week, lang) : MINI[entry.area.miniId][lang];
@@ -199,62 +199,62 @@ export default function Putzplan() {
   const [totals, setTotals] = useState({});
   const [combos, setCombos] = useState({});
 
-  useEffect(() => {
-    const loadTotals = async () => {
-      const { data, error } = await supabase.from("completions").select("person, week");
-      if (error) {
-        console.error("Veri çekme hatası:", error);
-        return;
-      }
+  const loadTotals = useCallback(async () => {
+    const { data, error } = await supabase.from("completions").select("person, week");
+    if (error) {
+      console.error("Veri çekme hatası:", error);
+      return;
+    }
 
-      const counts = {};
-      const streaks = {};
-      PEOPLE.forEach((p) => {
-        counts[p] = 0;
-        streaks[p] = 0;
-      });
+    const counts = {};
+    const streaks = {};
+    PEOPLE.forEach((p) => {
+      counts[p] = 0;
+      streaks[p] = 0;
+    });
 
-      const byPersonWeek = {};
-      (data || []).forEach((r) => {
-        counts[r.person] = (counts[r.person] || 0) + 1;
-        const k = `${r.person}|${r.week}`;
-        byPersonWeek[k] = (byPersonWeek[k] || 0) + 1;
-      });
+    const byPersonWeek = {};
+    (data || []).forEach((r) => {
+      counts[r.person] = (counts[r.person] || 0) + 1;
+      const k = `${r.person}|${r.week}`;
+      byPersonWeek[k] = (byPersonWeek[k] || 0) + 1;
+    });
 
-      const weekAllDone = (person, wk) => {
-        const entry = rotation(wk).find((e) => e.person === person);
-        if (!entry) return false;
-        const total = tasksOf(entry, wk, "tr").length;
-        const doneCount = byPersonWeek[`${person}|${wk}`] || 0;
-        return total > 0 && doneCount === total;
-      };
-
-      Object.keys(byPersonWeek).forEach((k) => {
-        const [person, weekStr] = k.split("|");
-        if (weekAllDone(person, Number(weekStr))) {
-          counts[person] += 2; // Bonus puan
-        }
-      });
-
-      PEOPLE.forEach((person) => {
-        let streak = 0;
-        let wk = weekNow();
-
-        if (!weekAllDone(person, wk)) {
-          wk--;
-        }
-
-        while (wk >= 0 && weekAllDone(person, wk)) {
-          streak++;
-          wk--;
-        }
-        streaks[person] = streak;
-      });
-
-      setTotals(counts);
-      setCombos(streaks);
+    const weekAllDone = (person, wk) => {
+      const entry = rotation(wk).find((e) => e.person === person);
+      if (!entry) return false;
+      const total = tasksOf(entry, wk, "tr").length;
+      const doneCount = byPersonWeek[`${person}|${wk}`] || 0;
+      return total > 0 && doneCount === total;
     };
 
+    Object.keys(byPersonWeek).forEach((k) => {
+      const [person, weekStr] = k.split("|");
+      if (weekAllDone(person, Number(weekStr))) {
+        counts[person] += 2; // Bonus puan
+      }
+    });
+
+    PEOPLE.forEach((person) => {
+      let streak = 0;
+      let wk = weekNow();
+
+      if (!weekAllDone(person, wk)) {
+        wk--;
+      }
+
+      while (wk >= 0 && weekAllDone(person, wk)) {
+        streak++;
+        wk--;
+      }
+      streaks[person] = streak;
+    });
+
+    setTotals(counts);
+    setCombos(streaks);
+  }, []);
+
+  useEffect(() => {
     loadTotals();
 
     const channel = supabase
@@ -265,7 +265,7 @@ export default function Putzplan() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [loadTotals]);
 
   const t = UI[lang] || UI.tr;
 
@@ -314,21 +314,35 @@ export default function Putzplan() {
 
   const toggle = async (person, taskId) => {
     const k = keyFor(week, person, taskId);
+    const wasChecked = done[k];
 
+    // Optimistic UI update
     setDone((prev) => {
       const next = { ...prev };
-      if (next[k]) delete next[k];
+      if (wasChecked) delete next[k];
       else next[k] = { by: me, at: Date.now() };
       return next;
     });
 
-    const wasChecked = done[k];
-    if (wasChecked) {
-      await supabase.from("completions").delete().eq("week", week).eq("person", person).eq("task", taskId);
-    } else {
-      await supabase
-        .from("completions")
-        .upsert({ week, person, task: taskId, checked_by: me }, { onConflict: "week,person,task" });
+    try {
+      if (wasChecked) {
+        const { error } = await supabase.from("completions").delete().eq("week", week).eq("person", person).eq("task", taskId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("completions")
+          .upsert({ week, person, task: taskId, checked_by: me }, { onConflict: "week,person,task" });
+        if (error) throw error;
+      }
+    } catch (err) {
+      console.error("Görünüm güncellenirken hata oluştu:", err);
+      // Rollback
+      setDone((prev) => {
+        const next = { ...prev };
+        if (wasChecked) next[k] = wasChecked;
+        else delete next[k];
+        return next;
+      });
     }
   };
 
@@ -376,7 +390,7 @@ export default function Putzplan() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${supabase.supabaseKey || ""}`,
+            "Authorization": `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""}`,
           },
           body: JSON.stringify({
             subscription: data.subscription,
@@ -668,14 +682,14 @@ export default function Putzplan() {
       </div>
 
       <div className="leaderboard">
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '13px', fontSize: '1.1rem', marginBottom: '18px' }}>
-    <img 
-      src="https://cdn-icons-png.flaticon.com/512/3593/3593584.png" 
-      alt="Leaderboard Logo" 
-      style={{ width: '26px', height: '26px', objectFit: 'contain' }} 
-    />
-    {t.totalPoints || t.leaderboard}
-  </h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '1.1rem', marginBottom: '18px' }}>
+          <img 
+            src="https://cdn-icons-png.flaticon.com/512/3593/3593584.png" 
+            alt="Leaderboard Logo" 
+            style={{ width: '26px', height: '26px', objectFit: 'contain' }} 
+          />
+          {t.leaderboard}
+        </h2>
 
         <div className="leaderboard-list">
           {Object.entries(totals)

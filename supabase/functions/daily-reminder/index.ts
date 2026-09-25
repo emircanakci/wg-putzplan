@@ -6,7 +6,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
 
 /* ---------------------------------------------------------------
-   page.jsx ile AYNI olmalı: isimler, alanlar, görevler, başlangıç haftası
+   names, areas, tasks, and other constants are hardcoded here for simplicity.
    --------------------------------------------------------------- */
 
 const PEOPLE = ["Emirhan", "Baran", "Ege"]
@@ -81,7 +81,7 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
     const week = weekNow()
 
-    // Bu haftanın tüm tamamlanma kayıtlarını tek seferde çek
+    // Retrieve all of this week's completion records at once
     const { data: completions } = await supabase
       .from("completions")
       .select("person, task")

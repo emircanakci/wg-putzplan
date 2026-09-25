@@ -3,7 +3,7 @@ self.addEventListener("push", (event) => {
   const title = data.title || "Putz-WG";
   const options = {
     body: data.body || "Yeni bir bildiriminiz var!",
-    icon: "/icon.png", // Varsa bildirim ikonu
+    icon: "/icon.png", 
     badge: "/icon.png",
     data: { url: data.url || "/" },
   };
@@ -18,13 +18,11 @@ self.addEventListener("notificationclick", (event) => {
 
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      // Eğer siteaten açık bir sekme varsa ona odaklan
       for (const client of clientList) {
         if (client.url === targetUrl && "focus" in client) {
           return client.focus();
         }
       }
-      // Açık sekme yoksa yeni pencere/sekme aç
       if (clients.openWindow) {
         return clients.openWindow(targetUrl);
       }

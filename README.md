@@ -36,7 +36,8 @@ A modern, full-stack web application built to organize weekly cleaning duties, t
 
 ## 📸 Preview
 
-<img width="1916" height="919" alt="image" src="https://github.com/user-attachments/assets/9f2dd560-fd52-4d8a-ab77-9d84cbf3a133" />
+<img width="1913" height="915" alt="image" src="https://github.com/user-attachments/assets/d7af6a5d-c3fb-4dc5-9b4a-6842cc08febf" />
+
 
 
 

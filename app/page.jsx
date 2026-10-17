@@ -115,8 +115,8 @@ const UI = {
   de: {
     leaderboard: "Gesamtpunkte",
     viewOnly: "Diese Woche ist nur zur Ansicht — keine Änderungen möglich.",
-    thisWeek: "Diese Woche bist du dran",
-    yourWeek: "Diese Woche bist du dran",
+    thisWeek: "Diese Woche",
+    yourWeek: "Deine Woche",
     weekOf: (label) => `Woche vom ${label}`,
     homeStatus: "Haushaltsstatus",
     allDone: "Alles erledigt.",

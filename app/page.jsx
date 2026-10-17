@@ -25,9 +25,9 @@ const AREAS = [
       { id: "vileda", label: { tr: "Vileda", en: "Mopping", de: "Wischen" } },
       { id: "kuvet", label: { tr: "Küvet Temizliği", en: "Tub Cleaning", de: "Wannenreinigung" } },
       { id: "bulasikmakinesi", label: { tr: "Bulaşık makinesi", en: "Dishwasher", de: "Geschirrspüler" } },
-      { id: "cop_cikar", label: { tr: "Çöpü çıkartma", en: "Take out the trash", de: "Müll rausbringen" } },
+      { id: "cop_cikar", label: { tr: "Çöp (Restmüll)", en: "Trash (General waste)", de: "Müll (Restmüll)" } },
+      { id: "market", label: { tr: "Ortak market", en: "Shared groceries", de: "Gemeinsamer Einkauf" } },
     ],
-    miniId: "cop",
   },
   {
     id: "banyo",
@@ -40,20 +40,19 @@ const AREAS = [
       { id: "vileda", label: { tr: "Vileda", en: "Mopping", de: "Wischen" } },
       { id: "bulasikmakinesi", label: { tr: "Bulaşık makinesi", en: "Dishwasher", de: "Geschirrspüler" } },
     ],
-    miniId: "market",
   },
   {
     id: "mutfak",
     name: { tr: "Mutfak", en: "Kitchen", de: "Küche" },
     tasks: [
-      { id: "tezgah", label: { tr: "Tezgah", en: "Countertop", de: "Arbeitsplatte" } },
+      { id: "tezgah", label: { tr: "Tezgah", en: "Counter", de: "Arbeitsplatte" } },
       { id: "ocak", label: { tr: "Ocak", en: "Stove", de: "Herd" } },
       { id: "bulasikmakinesi", label: { tr: "Bulaşık makinesi", en: "Dishwasher", de: "Geschirrspüler" } },
       { id: "supurge", label: { tr: "Süpürge", en: "Vacuum", de: "Staubsaugen" } },
       { id: "vileda", label: { tr: "Vileda", en: "Mopping", de: "Wischen" } },
-      { id: "cop_cikar", label: { tr: "Çöpü çıkartma", en: "Take out the trash", de: "Müll rausbringen" } },
+      { id: "masa", label: { tr: "Mutfak Masası", en: "Kitchen Table", de: "Küchentisch" } },
+      { id: "cop_restmull", label: { tr: "Çöp (Restmüll)", en: "Trash (General waste)", de: "Müll (Restmüll)" } },
     ],
-    miniId: "masa",
   },
 ];
 
@@ -179,14 +178,19 @@ const timeAgo = (ts, lang) => {
 
 const tasksOf = (entry, week, lang) => {
   if (!entry || !entry.area) return [];
-  const areaTasks = entry.area.tasks.map((t) => ({
-    id: `${entry.area.id}:${t.id}`,
-    label: `${entry.area.name[lang] || entry.area.name.tr}: ${t.label[lang] || t.label.tr}`,
-    rawLabel: t.label[lang] || t.label.tr,
-    isMini: false,
-  }));
-  const miniLabel = entry.area.miniId === "cop" ? trashLabel(week, lang) : MINI[entry.area.miniId][lang];
-  return [...areaTasks, { id: `${entry.area.id}:${entry.area.miniId}`, label: miniLabel, rawLabel: miniLabel, isMini: true }];
+  return entry.area.tasks.map((t) => {
+    let labelText = t.label[lang] || t.label.tr;
+    if (t.id === "cop_cikar") {
+      labelText = trashLabel(week, lang);
+    }
+    
+    return {
+      id: `${entry.area.id}:${t.id}`,
+      label: `${entry.area.name[lang] || entry.area.name.tr}: ${labelText}`,
+      rawLabel: labelText,
+      isMini: false,
+    };
+  });
 };
 
 export default function Putzplan() {
@@ -780,7 +784,7 @@ export default function Putzplan() {
           <div className="card" key={entry.person}>
             <header>
               <span className="name">{entry.person}</span>
-              <span className="sub">{entry.area.name[lang]} · {all.find((x) => x.isMini)?.label}</span>
+              <span className="sub">{entry.area.name[lang]}</span>
               <span className="count" data-all={complete ? 1 : 0}>{p.done}/{p.total}</span>
             </header>
             {complete ? (

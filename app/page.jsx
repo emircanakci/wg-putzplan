@@ -61,12 +61,14 @@ const MINI = {
   masa: { tr: "Mutfak Masası", en: "Kitchen Table", de: "Küchentisch" },
 };
 
+const isGelbeWeek = (week) => Math.abs(week) % 2 !== 0;
+
 const trashLabel = (week, lang) => {
-  const even = Math.abs(week) % 2 === 0;
+  const gelbe = isGelbeWeek(week);
   const map = {
-    tr: even ? "Çöp ( Restmüll )" : "Çöp ( Gelbe / Pappe )",
-    en: even ? "Trash (General waste)" : "Trash (Recycling/Paper)",
-    de: even ? "Müll (Restmüll)" : "Müll (Gelbe Tonne/Pappe)",
+    tr: gelbe ? "Çöp ( Gelbe / Pappe )" : "Çöp ( Restmüll )",
+    en: gelbe ? "Trash (Recycling/Paper)" : "Trash (General waste)",
+    de: gelbe ? "Müll (Gelbe Tonne/Pappe)" : "Müll (Restmüll)",
   };
   return map[lang] || map.tr;
 };
@@ -132,6 +134,7 @@ const UI = {
 };
 
 const START = new Date(2026, 8, 14);
+const ALLOW_EDIT_ANY_WEEK = false; // for temporary fix the weeks true/false
 
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -178,19 +181,22 @@ const timeAgo = (ts, lang) => {
 
 const tasksOf = (entry, week, lang) => {
   if (!entry || !entry.area) return [];
-  return entry.area.tasks.map((t) => {
-    let labelText = t.label[lang] || t.label.tr;
-    if (t.id === "cop_cikar") {
-      labelText = trashLabel(week, lang);
-    }
-    
-    return {
-      id: `${entry.area.id}:${t.id}`,
-      label: `${entry.area.name[lang] || entry.area.name.tr}: ${labelText}`,
-      rawLabel: labelText,
-      isMini: false,
-    };
-  });
+  return entry.area.tasks
+    // Mutfak'taki Restmüll görevi sadece Gelbe haftalarında çıksın
+    .filter((t) => !(t.id === "cop_restmull" && !isGelbeWeek(week)))
+    .map((t) => {
+      let labelText = t.label[lang] || t.label.tr;
+      if (t.id === "cop_cikar") {
+        labelText = trashLabel(week, lang);
+      }
+
+      return {
+        id: `${entry.area.id}:${t.id}`,
+        label: `${entry.area.name[lang] || entry.area.name.tr}: ${labelText}`,
+        rawLabel: labelText,
+        isMini: false,
+      };
+    });
 };
 
 export default function Putzplan() {
@@ -203,60 +209,63 @@ export default function Putzplan() {
   const [totals, setTotals] = useState({});
   const [combos, setCombos] = useState({});
 
-  const loadTotals = useCallback(async () => {
-    const { data, error } = await supabase.from("completions").select("person, week");
-    if (error) {
-      console.error("Veri çekme hatası:", error);
-      return;
+const loadTotals = useCallback(async () => {
+  const { data, error } = await supabase.from("completions").select("person, week, task");
+  if (error) {
+    console.error("Veri çekme hatası:", error);
+    return;
+  }
+
+  const counts = {};
+  const streaks = {};
+  PEOPLE.forEach((p) => {
+    counts[p] = 0;
+    streaks[p] = 0;
+  });
+
+  // "kişi|hafta" -> o hafta tamamlanan görev id'leri
+  const doneIds = {};
+  (data || []).forEach((r) => {
+    counts[r.person] = (counts[r.person] || 0) + 1;
+    const k = `${r.person}|${r.week}`;
+    if (!doneIds[k]) doneIds[k] = new Set();
+    doneIds[k].add(r.task);
+  });
+
+  const weekAllDone = (person, wk) => {
+    const entry = rotation(wk).find((e) => e.person === person);
+    if (!entry) return false;
+    const required = tasksOf(entry, wk, "tr");
+    const ids = doneIds[`${person}|${wk}`];
+    if (!ids || required.length === 0) return false;
+    return required.every((task) => ids.has(task.id));
+  };
+
+  Object.keys(doneIds).forEach((k) => {
+    const [person, weekStr] = k.split("|");
+    if (weekAllDone(person, Number(weekStr))) {
+      counts[person] += 2; // Bonus puan
+    }
+  });
+
+  PEOPLE.forEach((person) => {
+    let streak = 0;
+    let wk = weekNow();
+
+    if (!weekAllDone(person, wk)) {
+      wk--;
     }
 
-    const counts = {};
-    const streaks = {};
-    PEOPLE.forEach((p) => {
-      counts[p] = 0;
-      streaks[p] = 0;
-    });
+    while (wk >= 0 && weekAllDone(person, wk)) {
+      streak++;
+      wk--;
+    }
+    streaks[person] = streak;
+  });
 
-    const byPersonWeek = {};
-    (data || []).forEach((r) => {
-      counts[r.person] = (counts[r.person] || 0) + 1;
-      const k = `${r.person}|${r.week}`;
-      byPersonWeek[k] = (byPersonWeek[k] || 0) + 1;
-    });
-
-    const weekAllDone = (person, wk) => {
-      const entry = rotation(wk).find((e) => e.person === person);
-      if (!entry) return false;
-      const total = tasksOf(entry, wk, "tr").length;
-      const doneCount = byPersonWeek[`${person}|${wk}`] || 0;
-      return total > 0 && doneCount === total;
-    };
-
-    Object.keys(byPersonWeek).forEach((k) => {
-      const [person, weekStr] = k.split("|");
-      if (weekAllDone(person, Number(weekStr))) {
-        counts[person] += 2; // Bonus puan
-      }
-    });
-
-    PEOPLE.forEach((person) => {
-      let streak = 0;
-      let wk = weekNow();
-
-      if (!weekAllDone(person, wk)) {
-        wk--;
-      }
-
-      while (wk >= 0 && weekAllDone(person, wk)) {
-        streak++;
-        wk--;
-      }
-      streaks[person] = streak;
-    });
-
-    setTotals(counts);
-    setCombos(streaks);
-  }, []);
+  setTotals(counts);
+  setCombos(streaks);
+}, []);
 
   useEffect(() => {
     loadTotals();
@@ -315,6 +324,7 @@ export default function Putzplan() {
 
   const plan = useMemo(() => rotation(week), [week]);
   const isCurrent = week === weekNow();
+  const canEdit = isCurrent || ALLOW_EDIT_ANY_WEEK;
 
   const toggle = async (person, taskId) => {
     const k = keyFor(week, person, taskId);
@@ -735,9 +745,9 @@ export default function Putzplan() {
       </div>
 
       <div className="hero">
-        {!isCurrent && (
-          <div className="view-only-banner">{t.viewOnly}</div>
-        )}
+        {!canEdit && (
+  <div className="view-only-banner">{t.viewOnly}</div>
+)}
         <div className="kicker">{isCurrent ? t.yourWeek : t.weekOf(weekLabel(week))}</div>
         <div className="area">{mine?.area?.name[lang]}</div>
         <div className="fill-track">
@@ -757,8 +767,8 @@ export default function Putzplan() {
               key={task.id}
               className="row"
               data-done={rec ? 1 : 0}
-              disabled={!isCurrent}
-              onClick={() => isCurrent && toggle(me, task.id)}
+              disabled={!canEdit}
+              onClick={() => canEdit && toggle(me, task.id)}
             >
               <span className="box">{rec ? "✓" : ""}</span>
               <span className="label">{task.isMini ? task.label : task.rawLabel}</span>
